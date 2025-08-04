@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  team22-Medical-Chatbot:
+    image: medical-chatbot:latest
+    container_name: team22-Medical-Chatbot
+    restart: unless-stopped
+    ports:
+      - "3200:8000"
+    volumes:
+      - team22-data:/app/data
+      - team22-root:/root/.cache/huggingface
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      - TZ=Asia/Bangkok
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    networks:
+      - ai4thai_net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+
+networks:
+  ai4thai_net:
+    external: true
+
+volumes:
+  team22-data:
+    external: true
+  team22-root:
+    external: true

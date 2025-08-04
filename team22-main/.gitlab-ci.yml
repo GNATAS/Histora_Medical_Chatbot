@@ -1,0 +1,90 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+stages:
+  - build
+  - deploy
+  - stop_deploy
+
+services:
+  - docker:dind
+
+before_script:
+  - docker info
+
+build:
+  stage: build
+  image: docker:latest
+  tags:
+    - hackathon-siamai5
+  script:
+    - echo "Building Docker image for medical chatbot..."
+    - docker volume create team22-data
+    - docker volume create team22-root
+    - docker build -t medical-chatbot:latest .
+    - echo "Building Docker Compose services..."
+    - docker-compose build
+  only:
+    - main
+
+deploy:
+  stage: deploy
+  image: docker:latest
+  tags:
+    - hackathon-siamai5
+  script:
+    - docker info
+    - echo "Creating external network if it doesn't exist..."
+    - docker network create ai4thai_net || true
+    - echo "Creating storage directories for SQLite and Hugging Face cache..."
+    #- rm -rf /root/.cache/huggingface/*
+    - mkdir -p /app/data
+    - mkdir -p /root/.cache/huggingface
+    - echo "Stopping existing containers..."
+    - docker-compose down || true
+    - echo "Stopping and removing potentially conflicting containers..."
+    - docker stop team22-Medical-Chatbot || true
+    - docker rm team22-Medical-Chatbot || true
+    - echo "Starting services..."
+    - docker-compose up -d
+    - echo "Waiting for FastAPI service to be ready..."
+    - sleep 60
+    - echo "FastAPI service with SeaLLM-7B-v2.5 model is running..."
+    - curl --retry 5 --retry-delay 5 http://localhost:3200/health || echo "Health check failed"
+    - echo "Checking container logs for errors..."
+    - docker-compose logs
+    - echo "Deployment completed successfully"
+    - docker-compose ps
+  only:
+    - main
+  environment:
+    name: production
+    url: http://localhost:3200
+
+cleanup:
+  stage: deploy
+  image: docker:latest
+  tags:
+    - hackathon-siamai5
+  script:
+    - echo "Cleaning up unused Docker resources..."
+    - docker system prune -f
+    - docker volume prune -f
+  when: manual
+  only:
+    - main
+
+stop_deploy:
+  stage: stop_deploy
+  image: docker:latest
+  tags:
+    - hackathon-siamai5
+  script:
+    - echo "Stopping deployment..."
+    - docker stop team22-Medical-Chatbot || true
+    - docker rm team22-Medical-Chatbot || true
+    - docker-compose down || true
+  when: manual
+  only:
+    - main
